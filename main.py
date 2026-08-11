@@ -1,6 +1,7 @@
 import os
 import asyncio
 import re
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from aiohttp import web
 
@@ -17,14 +18,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("Не знайдено BOT_TOKEN у змінних оточення!")
 
-# Регулярний вираз для пошуку будь-яких варіацій слова "нонсенс / nonsenses"
 NONSENSE_PATTERN = re.compile(
     r'[нnh][оo0aа][нnh][сsczз][еeєэ3][нnh][сsczз]([еeєэ3][сsczз])?', 
     re.IGNORECASE
 )
 
-# Тривалість муту в секундах
-MUTE_SECONDS = 15
+# Для автоматичного муту через Telegram минимальний термін має бути від 30 секунд.
+# Використовуємо 35 секунд, щоб перекрити розсинхрон серверного часу Render та Telegram.
+MUTE_SECONDS = 35
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -49,39 +50,30 @@ async def handle_group_message(message: Message):
             # 1. Видаляємо повідомлення
             await message.delete()
 
-            # 2. Обмежуємо права користувача (без until_date)
+            # 2. Розраховуємо точний час закінчення муту в UTC
+            until_date = datetime.now(timezone.utc) + timedelta(seconds=MUTE_SECONDS)
+
+            # 3. Передаємо until_date напряму в Telegram (роботу з розмуту повністю бере на себе Telegram)
             await message.chat.restrict(
                 user_id=message.from_user.id,
-                permissions=ChatPermissions(can_send_messages=False)
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until_date
             )
 
-            # 3. Надсилаємо сповіщення в чат
+            # 4. Надсилаємо сповіщення в чат
             warning_msg = await message.answer(
                 f"Користувач {message.from_user.mention_html()} отримав мут на "
                 f"{MUTE_SECONDS} сек за згадку нонсенсів🤢🤮"
             )
             
-            # 4. Чекаємо 15 секунд
-            await asyncio.sleep(MUTE_SECONDS)
-
-            # 5. Повертаємо користувачеві права писати в чат
-            await message.chat.restrict(
-                user_id=message.from_user.id,
-                permissions=ChatPermissions(
-                    can_send_messages=True,
-                    can_send_media_messages=True,
-                    can_send_other_messages=True,
-                    can_add_web_page_previews=True
-                )
-            )
-
-            # 6. Видаляємо сповіщення бота
+            # 5. Видаляємо сповіщення бота через 15 секунд
+            await asyncio.sleep(35)
             await warning_msg.delete()
 
         except TelegramBadRequest as e:
             print(f"Помилка при застосуванні санкцій: {e}")
 
-# --- Фейковий веб-сервер для фрі-тарифу Render ---
+# --- Web-сервер для Uptime Robot та Render ---
 async def handle_ping(request):
     return web.Response(text="Bot is alive!")
 
