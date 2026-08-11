@@ -1,7 +1,6 @@
 import os
 import asyncio
 import re
-from datetime import timedelta
 from dotenv import load_dotenv
 from aiohttp import web
 
@@ -24,7 +23,8 @@ NONSENSE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-MUTE_DURATION = timedelta(seconds=15)
+# Тривалість муту в секундах
+MUTE_SECONDS = 15
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -46,20 +46,36 @@ async def handle_group_message(message: Message):
 
     if contains_banwords(content):
         try:
+            # 1. Видаляємо повідомлення
             await message.delete()
 
+            # 2. Обмежуємо права користувача (без until_date)
             await message.chat.restrict(
                 user_id=message.from_user.id,
-                permissions=ChatPermissions(can_send_messages=False),
-                until_date=MUTE_DURATION
+                permissions=ChatPermissions(can_send_messages=False)
             )
 
+            # 3. Надсилаємо сповіщення в чат
             warning_msg = await message.answer(
                 f"Користувач {message.from_user.mention_html()} отримав мут на "
-                f"{int(MUTE_DURATION.total_seconds())} сек за згадку нонсенсів🤢🤮"
+                f"{MUTE_SECONDS} сек за згадку нонсенсів🤢🤮"
             )
             
-            await asyncio.sleep(15)
+            # 4. Чекаємо 15 секунд
+            await asyncio.sleep(MUTE_SECONDS)
+
+            # 5. Повертаємо користувачеві права писати в чат
+            await message.chat.restrict(
+                user_id=message.from_user.id,
+                permissions=ChatPermissions(
+                    can_send_messages=True,
+                    can_send_media_messages=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True
+                )
+            )
+
+            # 6. Видаляємо сповіщення бота
             await warning_msg.delete()
 
         except TelegramBadRequest as e:
@@ -75,17 +91,13 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Render автоматично передає порт у змінну PORT
     port = int(os.getenv("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
 async def main():
-    # Запускаємо веб-сервер для Health Check від Render
     await start_web_server()
     print("Бот та веб-сервер успішно запущені...")
-    
-    # Запускаємо бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
