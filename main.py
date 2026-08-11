@@ -24,7 +24,7 @@ NONSENSE_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-MUTE_DURATION = timedelta(minutes=5)
+MUTE_DURATION = timedelta(seconds=15)
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -56,10 +56,10 @@ async def handle_group_message(message: Message):
 
             warning_msg = await message.answer(
                 f"Користувач {message.from_user.mention_html()} отримав мут на "
-                f"{int(MUTE_DURATION.total_seconds() // 60)} хв за згадку нонсенсів🤢🤮"
+                f"{int(MUTE_DURATION.total_seconds())} сек за згадку нонсенсів🤢🤮"
             )
             
-            await asyncio.sleep(300)
+            await asyncio.sleep(15)
             await warning_msg.delete()
 
         except TelegramBadRequest as e:
